@@ -19,10 +19,7 @@
         }
         h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; }
 
-        /* Pantalla de Login */
-        #login-screen {
-            display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 20px;
-        }
+        #login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 20px; }
         #login-screen input {
             padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid var(--text-color); 
             background-color: transparent; color: var(--text-color); text-align: center; outline: none;
@@ -33,7 +30,6 @@
         }
         #waiting-text { color: #cbd5e1; font-size: 1.2rem; display: none; }
 
-        /* UI Juego */
         .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); }
         .indicator { display: flex; flex-direction: column; align-items: center; }
         .indicator-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #cbd5e1; margin-bottom: 4px; }
@@ -64,7 +60,6 @@
 </head>
 <body>
 
-    <!-- Pantalla de Login -->
     <div id="login-screen">
         <h1>Pentaktys Online</h1>
         <input type="text" id="name-input" placeholder="Tu nombre" maxlength="12">
@@ -72,7 +67,6 @@
         <div id="waiting-text">Esperando a tu oponente...</div>
     </div>
 
-    <!-- UI del Juego (Oculta inicialmente) -->
     <h1 id="game-title" style="display: none;">Pentaktys</h1>
     <div class="ui-container" id="game-ui" style="display: none;">
         <div class="indicator">
@@ -90,16 +84,15 @@
         <div class="board" id="board"></div>
     </div>
     <div class="controls" id="game-controls" style="display: none;">
-        <button onclick="initGame(true)">Reiniciar Partida</button>
+        <button id="restart-btn">Reiniciar Partida</button>
     </div>
 
-    <!-- Cargar Socket.IO desde el servidor -->
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let myRole = 0; // 1 = Blancas, 2 = Negras
-        let myName = "";
-        let opponentName = "";
+        let myRole = 0;
+        let player1Name = "";
+        let player2Name = "";
         let roomId = null;
 
         const boardElement = document.getElementById('board');
@@ -116,41 +109,43 @@
         
         let draggedPieceWrapper = null, ghostElement = null, originCell = null, originBgColor = null, originRow = -1, originCol = -1;
         let currentTurn = 1, movesLeft = 15;
-        let isSyncing = false; // Evita bucles de eventos al recibir movimientos
+        let isSyncing = false;
 
-        // --- LÓGICA DE LOGIN Y SOCKET ---
         document.getElementById('play-btn').addEventListener('click', () => {
             const input = document.getElementById('name-input');
-            if (input.value.trim() === "") {
-                alert("Por favor, escribe tu nombre");
-                return;
-            }
-            myName = input.value.trim();
+            if (input.value.trim() === "") { alert("Por favor, escribe tu nombre"); return; }
+            
             document.getElementById('play-btn').style.display = 'none';
             input.style.display = 'none';
             document.getElementById('waiting-text').style.display = 'block';
-            socket.emit('player_ready', myName);
+            socket.emit('player_ready', input.value.trim());
         });
 
         socket.on('game_start', (gameData, role) => {
             myRole = role;
             roomId = gameData.roomId;
-            opponentName = (role === 1) ? gameData.player2.name : gameData.player1.name;
+            player1Name = gameData.player1Name;
+            player2Name = gameData.player2Name;
 
-            // Ocultar login, mostrar juego
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('game-title').style.display = 'block';
             document.getElementById('game-ui').style.display = 'flex';
             document.getElementById('game-board-container').style.display = 'block';
             document.getElementById('game-controls').style.display = 'block';
 
-            initGame(false); // Generar tablero localmente
+            initGame(gameData.boardSeed);
+        });
+
+        // Recibir reinicio del rival
+        socket.on('game_restart', () => {
+            isSyncing = true;
+            // Generar tablero local limpio
+            initGame(Math.random()); 
+            isSyncing = false;
         });
 
         socket.on('opponent_move', (moveData) => {
-            isSyncing = true; // Activar flag para no reenviar este movimiento
-            
-            // Aplicar el movimiento del rival en nuestro tablero
+            isSyncing = true;
             const fromCell = document.querySelector(`.cell[data-row="${moveData.fromRow}"][data-col="${moveData.fromCol}"]`);
             const toCell = document.querySelector(`.cell[data-row="${moveData.toRow}"][data-col="${moveData.toCol}"]`);
             const pieceWrapper = fromCell.querySelector('.piece-wrapper');
@@ -159,17 +154,22 @@
                 fromCell.classList.add('empty');
                 fromCell.style.backgroundColor = '';
             }
-
             const targetPiece = toCell.querySelector('.piece-wrapper');
-            if (targetPiece) toCell.removeChild(targetPiece); // Comer
+            if (targetPiece) toCell.removeChild(targetPiece);
 
             toCell.appendChild(pieceWrapper);
-            
-            changeTurn(); // Cambiar el turno localmente
+            changeTurn();
             isSyncing = false;
         });
 
-        // --- LÓGICA DEL JUEGO (Adaptada) ---
+        // Reiniciar partida y avisar al rival
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            if (confirm('¿Reiniciar la partida? Esto afectará a ambos jugadores.')) {
+                socket.emit('restart_game', roomId);
+                initGame(Math.random()); // Reiniciar mi tablero localmente
+            }
+        });
+
         function getMarksSVG(color) {
             let lines = '';
             let svg = `<svg class="marks" viewBox="0 0 100 100" preserveAspectRatio="none">`;
@@ -181,28 +181,36 @@
             return svg;
         }
 
-        function shuffleArray(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
+        function seededRandom(seed) {
+            let x = Math.sin(seed) * 10000;
+            return x - Math.floor(x);
         }
 
-        function initGame(isRematch) {
+        function shuffleArrayWithSeed(array, seed) {
+            let arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(seededRandom(seed + i) * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function initGame(seed) {
             boardElement.innerHTML = '';
-            currentTurn = 1; // Siempre empiezan blancas
+            currentTurn = 1;
             movesLeft = 15;
             updateUI();
 
             const uniqueColors = ['var(--c-magenta)', 'var(--c-rojo)', 'var(--c-verde)', 'var(--c-azul)', 'var(--c-naranja)'];
-            let firstRowColors = shuffleArray([...uniqueColors]);
+            
+            // Usar la semilla para que ambos jugadores tengan el mismo tablero
+            let firstRowColors = shuffleArrayWithSeed(uniqueColors, seed);
             let fifthRowColors = [...firstRowColors].reverse();
             let availableColors = [...colors];
             
             firstRowColors.forEach(c => { let i = availableColors.indexOf(c); if (i !== -1) availableColors.splice(i, 1); });
             fifthRowColors.forEach(c => { let i = availableColors.indexOf(c); if (i !== -1) availableColors.splice(i, 1); });
-            shuffleArray(availableColors);
+            availableColors = shuffleArrayWithSeed(availableColors, seed * 2);
 
             let boardColors = [firstRowColors];
             for (let r = 0; r < 3; r++) {
@@ -241,11 +249,11 @@
         }
 
         function updateUI() {
-            // Mostrar nombres en lugar de "Blancas/Negras"
+            // Arreglado: usar las variables globales correctas
             if (currentTurn === 1) {
-                turnIndicator.innerHTML = `<span class="turn-dot j1"></span>${myRole === 1 ? myName : opponentName}`;
+                turnIndicator.innerHTML = `<span class="turn-dot j1"></span>${player1Name}`;
             } else {
-                turnIndicator.innerHTML = `<span class="turn-dot j2"></span>${myRole === 2 ? myName : opponentName}`;
+                turnIndicator.innerHTML = `<span class="turn-dot j2"></span>${player2Name}`;
             }
             roundIndicator.innerText = Math.max(0, movesLeft);
         }
@@ -362,14 +370,13 @@
 
             if (moveSuccessful) {
                 if (!isSyncing) {
-                    // Enviar movimiento por Socket.IO si lo hice yo y no lo recibí del rival
                     socket.emit('make_move', {
                         roomId: roomId,
                         fromRow: originRow,
                         fromCol: originCol,
                         toRow: parseInt(targetCell.dataset.row),
                         toCol: parseInt(targetCell.dataset.col),
-                        wasEmptyConsumed: movesLeft === 0 // Si estábamos en fase de desaparición
+                        wasEmptyConsumed: movesLeft === 0
                     });
                 }
                 changeTurn();
