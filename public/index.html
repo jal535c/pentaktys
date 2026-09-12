@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pentaktys Online</title>
+    <style>
+        :root {
+            --bg-color: #5b6b83; --board-bg: #0f172a; --line-color: #334155; --text-color: #f1f5f9; 
+            --c-magenta: #9D4EDD; --c-rojo: #E63946; --c-verde: #2A9D8F; --c-azul: #4361EE; --c-naranja: #F4A261; 
+            --ficha-j1: #f8fafc; --ficha-j2: #0f172a; 
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color);
+            min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center;
+            justify-content: flex-start; gap: 30px; padding: 30px 20px; touch-action: none; overflow: hidden;
+            -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+        }
+        h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; }
+
+        /* Pantalla de Login */
+        #login-screen {
+            display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 20px;
+        }
+        #login-screen input {
+            padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid var(--text-color); 
+            background-color: transparent; color: var(--text-color); text-align: center; outline: none;
+        }
+        #login-screen button {
+            padding: 15px 30px; font-size: 1.2rem; cursor: pointer; border: none; border-radius: 8px;
+            background-color: var(--text-color); color: var(--bg-color); font-weight: bold;
+        }
+        #waiting-text { color: #cbd5e1; font-size: 1.2rem; display: none; }
+
+        /* UI Juego */
+        .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); }
+        .indicator { display: flex; flex-direction: column; align-items: center; }
+        .indicator-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #cbd5e1; margin-bottom: 4px; }
+        .indicator-value { font-size: 1.2rem; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+        .turn-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); }
+        .turn-dot.j1 { background-color: var(--ficha-j1); }
+        .turn-dot.j2 { background-color: var(--ficha-j2); }
+
+        .board-container { width: 100%; max-width: 500px; aspect-ratio: 1 / 1; }
+        .board { display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(5, 1fr); gap: 4px; width: 100%; height: 100%; background-color: var(--line-color); border: 4px solid var(--line-color); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5); }
+        .cell { display: flex; align-items: center; justify-content: center; position: relative; transition: filter 0.2s, background-color 0.3s; overflow: hidden; }
+        .cell.drag-over { filter: brightness(1.5); }
+        .cell.empty { background-color: var(--bg-color) !important; }
+        .marks { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.5; z-index: 1; transition: opacity 0.3s; }
+        .cell.empty .marks { opacity: 0; }
+        .piece-wrapper { width: 65%; height: 65%; display: flex; align-items: center; justify-content: center; position: relative; z-index: 2; cursor: grab; }
+        .piece { width: 100%; height: 100%; border-radius: 50%; transition: transform 0.1s ease, opacity 0.2s ease; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3); border: 2px solid rgba(0,0,0,0.3); pointer-events: none; }
+        .piece-wrapper:active .piece { transform: scale(0.95); }
+        .piece.dragging { opacity: 0.2; }
+        .piece-wrapper.locked { opacity: 0.6; cursor: not-allowed; }
+        .piece.j1 { background-color: var(--ficha-j1); border-color: #cbd5e1; }
+        .piece.j2 { background-color: var(--ficha-j2); border-color: #334155; }
+        .controls { margin-top: 0; }
+        button { padding: 10px 20px; font-size: 1rem; background-color: transparent; color: var(--text-color); border: 1px solid var(--text-color); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; }
+        button:hover { background-color: var(--text-color); color: var(--bg-color); }
+        .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.8; transform: scale(1.1); transition: none; box-shadow: 0 8px 16px rgba(0,0,0,0.5); width: 65px; height: 65px; border-radius: 50%; }
+    </style>
+</head>
+<body>
+
+    <!-- Pantalla de Login -->
+    <div id="login-screen">
+        <h1>Pentaktys Online</h1>
+        <input type="text" id="name-input" placeholder="Tu nombre" maxlength="12">
+        <button id="play-btn">JUGAR</button>
+        <div id="waiting-text">Esperando a tu oponente...</div>
+    </div>
+
+    <!-- UI del Juego (Oculta inicialmente) -->
+    <h1 id="game-title" style="display: none;">Pentaktys</h1>
+    <div class="ui-container" id="game-ui" style="display: none;">
+        <div class="indicator">
+            <span class="indicator-label">Turno</span>
+            <span class="indicator-value" id="turnIndicator">
+                <span class="turn-dot j1"></span>Esperando...
+            </span>
+        </div>
+        <div class="indicator">
+            <span class="indicator-label">Movimientos Restantes</span>
+            <span class="indicator-value" id="roundIndicator">15</span>
+        </div>
+    </div>
+    <div class="board-container" id="game-board-container" style="display: none;">
+        <div class="board" id="board"></div>
+    </div>
+    <div class="controls" id="game-controls" style="display: none;">
+        <button onclick="initGame(true)">Reiniciar Partida</button>
+    </div>
+
+    <!-- Cargar Socket.IO desde el servidor -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let myRole = 0; // 1 = Blancas, 2 = Negras
+        let myName = "";
+        let opponentName = "";
+        let roomId = null;
+
+        const boardElement = document.getElementById('board');
+        const turnIndicator = document.getElementById('turnIndicator');
+        const roundIndicator = document.getElementById('roundIndicator');
+        
+        const colors = [
+            'var(--c-magenta)', 'var(--c-magenta)', 'var(--c-magenta)', 'var(--c-magenta)', 'var(--c-magenta)', 'var(--c-magenta)', 'var(--c-magenta)', 'var(--c-magenta)',
+            'var(--c-rojo)', 'var(--c-rojo)', 'var(--c-rojo)', 'var(--c-rojo)', 'var(--c-rojo)', 'var(--c-rojo)', 'var(--c-rojo)', 'var(--c-rojo)',
+            'var(--c-verde)', 'var(--c-verde)', 'var(--c-verde)', 'var(--c-verde)', 'var(--c-verde)', 'var(--c-verde)', 'var(--c-verde)', 'var(--c-verde)',
+            'var(--c-azul)', 'var(--c-azul)', 'var(--c-azul)', 'var(--c-azul)', 'var(--c-azul)', 'var(--c-azul)', 'var(--c-azul)', 'var(--c-azul)',
+            'var(--c-naranja)', 'var(--c-naranja)', 'var(--c-naranja)', 'var(--c-naranja)', 'var(--c-naranja)', 'var(--c-naranja)', 'var(--c-naranja)', 'var(--c-naranja)'
+        ];
+        
+        let draggedPieceWrapper = null, ghostElement = null, originCell = null, originBgColor = null, originRow = -1, originCol = -1;
+        let currentTurn = 1, movesLeft = 15;
+        let isSyncing = false; // Evita bucles de eventos al recibir movimientos
+
+        // --- LÓGICA DE LOGIN Y SOCKET ---
+        document.getElementById('play-btn').addEventListener('click', () => {
+            const input = document.getElementById('name-input');
+            if (input.value.trim() === "") {
+                alert("Por favor, escribe tu nombre");
+                return;
+            }
+            myName = input.value.trim();
+            document.getElementById('play-btn').style.display = 'none';
+            input.style.display = 'none';
+            document.getElementById('waiting-text').style.display = 'block';
+            socket.emit('player_ready', myName);
+        });
+
+        socket.on('game_start', (gameData, role) => {
+            myRole = role;
+            roomId = gameData.roomId;
+            opponentName = (role === 1) ? gameData.player2.name : gameData.player1.name;
+
+            // Ocultar login, mostrar juego
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-title').style.display = 'block';
+            document.getElementById('game-ui').style.display = 'flex';
+            document.getElementById('game-board-container').style.display = 'block';
+            document.getElementById('game-controls').style.display = 'block';
+
+            initGame(false); // Generar tablero localmente
+        });
+
+        socket.on('opponent_move', (moveData) => {
+            isSyncing = true; // Activar flag para no reenviar este movimiento
+            
+            // Aplicar el movimiento del rival en nuestro tablero
+            const fromCell = document.querySelector(`.cell[data-row="${moveData.fromRow}"][data-col="${moveData.fromCol}"]`);
+            const toCell = document.querySelector(`.cell[data-row="${moveData.toRow}"][data-col="${moveData.toCol}"]`);
+            const pieceWrapper = fromCell.querySelector('.piece-wrapper');
+
+            if (moveData.wasEmptyConsumed) {
+                fromCell.classList.add('empty');
+                fromCell.style.backgroundColor = '';
+            }
+
+            const targetPiece = toCell.querySelector('.piece-wrapper');
+            if (targetPiece) toCell.removeChild(targetPiece); // Comer
+
+            toCell.appendChild(pieceWrapper);
+            
+            changeTurn(); // Cambiar el turno localmente
+            isSyncing = false;
+        });
+
+        // --- LÓGICA DEL JUEGO (Adaptada) ---
+        function getMarksSVG(color) {
+            let lines = '';
+            let svg = `<svg class="marks" viewBox="0 0 100 100" preserveAspectRatio="none">`;
+            if (color === 'var(--c-magenta)') lines = `<line x1="10" y1="50" x2="90" y2="50" stroke="rgba(255,255,255,0.8)" stroke-width="4"/>`;
+            else if (color === 'var(--c-rojo)') lines = `<line x1="10" y1="35" x2="90" y2="35" stroke="rgba(255,255,255,0.8)" stroke-width="4"/><line x1="10" y1="65" x2="90" y2="65" stroke="rgba(255,255,255,0.8)" stroke-width="4"/>`;
+            else if (color === 'var(--c-azul)') lines = `<line x1="20" y1="80" x2="80" y2="20" stroke="rgba(255,255,255,0.8)" stroke-width="4"/>`;
+            else if (color === 'var(--c-verde)') lines = `<line x1="20" y1="70" x2="70" y2="20" stroke="rgba(255,255,255,0.8)" stroke-width="4"/><line x1="30" y1="80" x2="80" y2="30" stroke="rgba(255,255,255,0.8)" stroke-width="4"/>`;
+            svg += lines + `</svg>`;
+            return svg;
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function initGame(isRematch) {
+            boardElement.innerHTML = '';
+            currentTurn = 1; // Siempre empiezan blancas
+            movesLeft = 15;
+            updateUI();
+
+            const uniqueColors = ['var(--c-magenta)', 'var(--c-rojo)', 'var(--c-verde)', 'var(--c-azul)', 'var(--c-naranja)'];
+            let firstRowColors = shuffleArray([...uniqueColors]);
+            let fifthRowColors = [...firstRowColors].reverse();
+            let availableColors = [...colors];
+            
+            firstRowColors.forEach(c => { let i = availableColors.indexOf(c); if (i !== -1) availableColors.splice(i, 1); });
+            fifthRowColors.forEach(c => { let i = availableColors.indexOf(c); if (i !== -1) availableColors.splice(i, 1); });
+            shuffleArray(availableColors);
+
+            let boardColors = [firstRowColors];
+            for (let r = 0; r < 3; r++) {
+                let row = []; for (let c = 0; c < 5; c++) row.push(availableColors.pop());
+                boardColors.push(row);
+            }
+            boardColors.push(fifthRowColors);
+
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = r; cell.dataset.col = c;
+                    let assignedColor = boardColors[r][c];
+                    cell.style.backgroundColor = assignedColor;
+                    cell.dataset.originalColor = assignedColor; 
+                    cell.innerHTML = getMarksSVG(assignedColor);
+                    boardElement.appendChild(cell);
+                }
+            }
+            for (let i = 0; i < 5; i++) createPiece(boardElement.children[i], 1);
+            for (let i = 20; i < 25; i++) createPiece(boardElement.children[i], 2);
+            updateLocks();
+        }
+
+        function createPiece(parentCell, player) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'piece-wrapper';
+            wrapper.dataset.player = player;
+            const piece = document.createElement('div');
+            piece.className = `piece j${player}`;
+            wrapper.appendChild(piece);
+            wrapper.addEventListener('pointerdown', handlePointerDown);
+            wrapper.addEventListener('dragstart', (e) => e.preventDefault());
+            parentCell.appendChild(wrapper);
+        }
+
+        function updateUI() {
+            // Mostrar nombres en lugar de "Blancas/Negras"
+            if (currentTurn === 1) {
+                turnIndicator.innerHTML = `<span class="turn-dot j1"></span>${myRole === 1 ? myName : opponentName}`;
+            } else {
+                turnIndicator.innerHTML = `<span class="turn-dot j2"></span>${myRole === 2 ? myName : opponentName}`;
+            }
+            roundIndicator.innerText = Math.max(0, movesLeft);
+        }
+
+        function updateLocks() {
+            document.querySelectorAll('.piece-wrapper').forEach(p => {
+                if (parseInt(p.dataset.player) === currentTurn && currentTurn === myRole) {
+                    p.classList.remove('locked');
+                } else {
+                    p.classList.add('locked');
+                }
+            });
+        }
+
+        function changeTurn() {
+            if (movesLeft > 0) movesLeft--;
+            currentTurn = currentTurn === 1 ? 2 : 1;
+            updateUI();
+            updateLocks();
+        }
+
+        function handlePointerDown(e) {
+            const wrapper = e.currentTarget;
+            if (wrapper.classList.contains('locked')) return;
+            e.preventDefault();
+            draggedPieceWrapper = wrapper;
+            originCell = wrapper.parentNode;
+            originRow = parseInt(originCell.dataset.row);
+            originCol = parseInt(originCell.dataset.col);
+            
+            if (movesLeft === 0) {
+                originBgColor = originCell.style.backgroundColor;
+                originCell.classList.add('empty'); 
+                originCell.style.backgroundColor = ''; 
+            }
+            const pieceElement = wrapper.querySelector('.piece');
+            pieceElement.classList.add('dragging');
+            ghostElement = pieceElement.cloneNode(true);
+            ghostElement.classList.remove('dragging');
+            ghostElement.classList.add('drag-ghost');
+            const rect = pieceElement.getBoundingClientRect();
+            ghostElement.style.width = rect.width + 'px';
+            ghostElement.style.height = rect.height + 'px';
+            document.body.appendChild(ghostElement);
+            moveGhost(e.clientX, e.clientY);
+            document.addEventListener('pointermove', handlePointerMove);
+            document.addEventListener('pointerup', handlePointerUp);
+            document.addEventListener('pointercancel', handlePointerUp);
+        }
+
+        function moveGhost(x, y) {
+            if (ghostElement) {
+                const rect = ghostElement.getBoundingClientRect();
+                ghostElement.style.left = (x - rect.width / 2) + 'px';
+                ghostElement.style.top = (y - rect.height / 2) + 'px';
+            }
+        }
+
+        function handlePointerMove(e) {
+            if (!draggedPieceWrapper) return;
+            e.preventDefault();
+            moveGhost(e.clientX, e.clientY);
+            document.querySelectorAll('.cell').forEach(c => c.classList.remove('drag-over'));
+            ghostElement.style.display = 'none';
+            const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+            ghostElement.style.display = '';
+            if (elementBelow) {
+                const cellBelow = elementBelow.closest('.cell');
+                if (cellBelow && !cellBelow.classList.contains('empty') && cellBelow !== originCell) {
+                    const targetPiece = cellBelow.querySelector('.piece-wrapper');
+                    if (!targetPiece || parseInt(targetPiece.dataset.player) !== currentTurn) {
+                        cellBelow.classList.add('drag-over');
+                    }
+                }
+            }
+        }
+
+        function isValidMove(originColor, r1, c1, r2, c2) {
+            const dr = r2 - r1, dc = c2 - c1, absDr = Math.abs(dr), absDc = Math.abs(dc);
+            if (originColor === 'var(--c-magenta)') return (absDr === 1 && absDc === 0) || (absDr === 0 && absDc === 1);
+            if (originColor === 'var(--c-rojo)') return (absDr === 2 && absDc === 0) || (absDr === 0 && absDc === 2);
+            if (originColor === 'var(--c-azul)') return absDr === 1 && absDc === 1;
+            if (originColor === 'var(--c-verde)') return absDr === 2 && absDc === 2;
+            if (originColor === 'var(--c-naranja)') return (absDr === 2 && absDc === 1) || (absDr === 1 && absDc === 2);
+            return false;
+        }
+
+        function handlePointerUp(e) {
+            if (!draggedPieceWrapper) return;
+            ghostElement.style.display = 'none';
+            const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+            let moveSuccessful = false;
+            let targetCell = null;
+
+            if (elementBelow) {
+                targetCell = elementBelow.closest('.cell');
+                if (targetCell && !targetCell.classList.contains('empty') && targetCell !== originCell) {
+                    const targetPieceWrapper = targetCell.querySelector('.piece-wrapper');
+                    if (!targetPieceWrapper || parseInt(targetPieceWrapper.dataset.player) !== currentTurn) {
+                        const targetRow = parseInt(targetCell.dataset.row);
+                        const targetCol = parseInt(targetCell.dataset.col);
+                        if (isValidMove(originBgColor || originCell.dataset.originalColor, originRow, originCol, targetRow, targetCol)) {
+                            if (targetPieceWrapper) targetCell.removeChild(targetPieceWrapper); // Comer
+                            targetCell.appendChild(draggedPieceWrapper);
+                            moveSuccessful = true;
+                        }
+                    }
+                }
+            }
+
+            draggedPieceWrapper.querySelector('.piece').classList.remove('dragging');
+            if (ghostElement) { document.body.removeChild(ghostElement); ghostElement = null; }
+            document.querySelectorAll('.cell').forEach(c => c.classList.remove('drag-over'));
+
+            if (moveSuccessful) {
+                if (!isSyncing) {
+                    // Enviar movimiento por Socket.IO si lo hice yo y no lo recibí del rival
+                    socket.emit('make_move', {
+                        roomId: roomId,
+                        fromRow: originRow,
+                        fromCol: originCol,
+                        toRow: parseInt(targetCell.dataset.row),
+                        toCol: parseInt(targetCell.dataset.col),
+                        wasEmptyConsumed: movesLeft === 0 // Si estábamos en fase de desaparición
+                    });
+                }
+                changeTurn();
+            } else {
+                if (originBgColor) {
+                    originCell.classList.remove('empty');
+                    originCell.style.backgroundColor = originBgColor;
+                }
+            }
+
+            draggedPieceWrapper = null; originCell = null; originBgColor = null; originRow = -1; originCol = -1;
+            document.removeEventListener('pointermove', handlePointerMove);
+            document.removeEventListener('pointerup', handlePointerUp);
+            document.removeEventListener('pointercancel', handlePointerUp);
+        }
+    </script>
+</body>
+</html>
