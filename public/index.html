@@ -20,7 +20,6 @@
         }
         h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; }
 
-        /* Pantalla de Login */
         #login-screen { display: flex; flex-direction: column; align-items: center; gap: 30px; width: 100%; max-width: 400px; }
         #login-screen input {
             padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid var(--text-color); 
@@ -32,7 +31,6 @@
         }
         #waiting-text { color: #cbd5e1; font-size: 1.2rem; display: none; text-align: center; }
 
-        /* UI Juego */
         .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); }
         .indicator { display: flex; flex-direction: column; align-items: center; }
         .indicator-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #cbd5e1; margin-bottom: 4px; }
@@ -60,7 +58,6 @@
         button:hover { background-color: var(--text-color); color: var(--bg-color); }
         .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.8; transform: scale(1.1); transition: none; box-shadow: 0 8px 16px rgba(0,0,0,0.5); width: 65px; height: 65px; border-radius: 50%; }
 
-        /* Modal de Fin de Partida */
         #result-screen {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.8);
             display: none; align-items: center; justify-content: center; z-index: 10000;
@@ -75,7 +72,6 @@
 </head>
 <body>
 
-    <!-- Pantalla de Login -->
     <div id="login-screen">
         <h1>Pentaktys Online</h1>
         <input type="text" id="name-input" placeholder="Tu nombre" maxlength="12">
@@ -83,7 +79,6 @@
         <div id="waiting-text">Esperando a tu oponente...</div>
     </div>
 
-    <!-- UI del Juego (Oculta inicialmente) -->
     <h1 id="game-title" style="display: none;">Pentaktys</h1>
     <div class="ui-container" id="game-ui" style="display: none;">
         <div class="indicator">
@@ -104,12 +99,11 @@
         <button id="restart-btn">Reiniciar Partida</button>
     </div>
 
-    <!-- Pantalla de Resultados (Modal) -->
     <div id="result-screen">
         <div id="result-content">
             <div id="result-title">Fin de la Partida</div>
             <div id="winner-name">Ganador: -</div>
-            <button id="rematch-btn">Nueva Partida</button>
+            <button id="accept-btn">Aceptar</button>
         </div>
     </div>
 
@@ -150,7 +144,8 @@
         socket.on('game_start', (gameData, role) => {
             myRole = role;
             roomId = gameData.roomId;
-            player1Name = gameData.player1Name;
+            // Corregido: Extraer exactamente estos campos del objeto
+            player1Name = gameData.player1Name; 
             player2Name = gameData.player2Name;
 
             document.getElementById('login-screen').style.display = 'none';
@@ -186,21 +181,18 @@
             isSyncing = false;
         });
 
+        // Restaurado: Botón de reiniciar de la interfaz normal
         document.getElementById('restart-btn').addEventListener('click', () => {
             if (confirm('¿Reiniciar la partida? Esto afectará a ambos jugadores.')) {
-                triggerRestart();
+                socket.emit('restart_game', roomId);
+                initGame(Math.random()); 
             }
         });
 
-        document.getElementById('rematch-btn').addEventListener('click', () => {
-            triggerRestart();
-        });
-
-        function triggerRestart() {
-            socket.emit('restart_game', roomId);
-            initGame(Math.random()); 
+        // Nuevo: Botón del modal (solo cierra el modal)
+        document.getElementById('accept-btn').addEventListener('click', () => {
             document.getElementById('result-screen').style.display = 'none';
-        }
+        });
 
         function getMarksSVG(color) {
             let lines = '';
@@ -303,10 +295,9 @@
             currentTurn = currentTurn === 1 ? 2 : 1;
             updateUI();
             updateLocks();
-            checkGameEnd(); // Comprobar fin de partida tras cada turno
+            checkGameEnd();
         }
 
-        // --- LÓGICA DE FIN DE PARTIDA ---
         function checkGameEnd() {
             let p1Pieces = document.querySelectorAll('.piece-wrapper[data-player="1"]').length;
             let p2Pieces = document.querySelectorAll('.piece-wrapper[data-player="2"]').length;
@@ -316,7 +307,6 @@
             } else if (p2Pieces === 0) {
                 endGame(1);
             } else {
-                // Si al jugador actual no le quedan movimientos válidos, pierde
                 if (!hasValidMoves(currentTurn)) {
                     endGame(currentTurn === 1 ? 2 : 1);
                 }
@@ -324,7 +314,6 @@
         }
 
         function hasValidMoves(player) {
-            // Obtiene todas las fichas del jugador
             let pieces = document.querySelectorAll(`.piece-wrapper[data-player="${player}"]`);
             for (let piece of pieces) {
                 let cell = piece.parentNode;
@@ -332,7 +321,6 @@
                 let c1 = parseInt(cell.dataset.col);
                 let color = cell.dataset.originalColor;
 
-                // Revisa si existe al menos un destino válido en el tablero
                 let allCells = document.querySelectorAll('.cell');
                 for (let targetCell of allCells) {
                     if (targetCell === cell || targetCell.classList.contains('empty')) continue;
@@ -342,19 +330,19 @@
                     if (isValidMove(color, r1, c1, r2, c2)) {
                         let targetPiece = targetCell.querySelector('.piece-wrapper');
                         if (!targetPiece || parseInt(targetPiece.dataset.player) !== player) {
-                            return true; // Encontró un movimiento, no ha perdido
+                            return true; 
                         }
                     }
                 }
             }
-            return false; // No hay movimientos posibles
+            return false; 
         }
 
         function endGame(winnerRole) {
             const winnerName = winnerRole === 1 ? player1Name : player2Name;
             document.getElementById('winner-name').innerText = `¡Ganador: ${winnerName}!`;
             document.getElementById('result-screen').style.display = 'flex';
-            updateLocks(); // Bloquea todas las fichas
+            updateLocks(); 
         }
 
         function handlePointerDown(e) {
