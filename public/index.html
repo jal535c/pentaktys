@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pentaktys Online</title>
-    <link rel="icon" href="favicon.ico">
     <style>
         :root {
             --bg-color: #5b6b83; --board-bg: #0f172a; --line-color: #334155; --text-color: #f1f5f9; 
@@ -20,7 +19,7 @@
         }
         h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
 
-        #login-screen { display: flex; flex-direction: column; align-items: center; gap: 30px; width: 100%; max-width: 400px; }
+        #login-screen { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; max-width: 400px; }
         #login-screen input {
             padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid var(--text-color); 
             background-color: transparent; color: var(--text-color); text-align: center; outline: none; width: 100%;
@@ -31,18 +30,14 @@
         }
         #waiting-text { color: #cbd5e1; font-size: 1.2rem; display: none; text-align: center; }
         
-        /* Guía de Colores */
-        #rules-guide { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; }
-        .rule-item { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; text-align: left; }
-        .color-dot { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); }
-
-        .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); }
+        .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); position: relative; }
         .indicator { display: flex; flex-direction: column; align-items: center; }
         .indicator-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #cbd5e1; margin-bottom: 4px; }
         .indicator-value { font-size: 1.2rem; font-weight: bold; display: flex; align-items: center; gap: 8px; }
         .turn-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); }
         .turn-dot.j1 { background-color: var(--ficha-j1); }
         .turn-dot.j2 { background-color: var(--ficha-j2); }
+        .help-btn { position: absolute; right: 10px; top: 10px; border: 1px solid rgba(255,255,255,0.3); background: transparent; color: var(--text-color); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8rem; }
 
         .board-container { width: 100%; max-width: 500px; aspect-ratio: 1 / 1; }
         .board { display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(5, 1fr); gap: 4px; width: 100%; height: 100%; background-color: var(--line-color); border: 4px solid var(--line-color); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5); }
@@ -58,15 +53,18 @@
         .piece-wrapper.locked { opacity: 0.6; cursor: not-allowed; }
         .piece.j1 { background-color: var(--ficha-j1); border-color: #cbd5e1; }
         .piece.j2 { background-color: var(--ficha-j2); border-color: #334155; }
-        .controls { margin-top: 0; }
+        
+        .controls { margin-top: 0; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 200px; }
         button { padding: 10px 20px; font-size: 1rem; background-color: transparent; color: var(--text-color); border: 1px solid var(--text-color); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; }
         button:hover { background-color: var(--text-color); color: var(--bg-color); }
         .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.8; transform: scale(1.1); transition: none; box-shadow: 0 8px 16px rgba(0,0,0,0.5); width: 65px; height: 65px; border-radius: 50%; }
 
-        #result-screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 10000; }
-        #result-content { background-color: var(--board-bg); padding: 40px; border-radius: 12px; border: 1px solid var(--text-color); text-align: center; display: flex; flex-direction: column; gap: 20px; }
-        #result-title { font-size: 1.5rem; text-transform: uppercase; letter-spacing: 1px; }
-        #winner-name { font-size: 2rem; font-weight: bold; color: #fbbf24; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 10000; }
+        .modal-content { background-color: var(--board-bg); padding: 30px; border-radius: 12px; border: 1px solid var(--text-color); text-align: center; display: flex; flex-direction: column; gap: 20px; max-width: 400px; width: 90%; }
+        .modal-content h2 { text-transform: uppercase; letter-spacing: 1px; }
+        .rule-item { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; text-align: left; }
+        .color-dot { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); flex-shrink: 0; }
+        .modal-intro { font-size: 0.9rem; color: #cbd5e1; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -74,20 +72,12 @@
     <div id="login-screen">
         <h1>Pentaktys Online</h1>
         <input type="text" id="name-input" placeholder="Tu nombre" maxlength="12">
-        <button id="play-btn">JUGAR</button>
+        <button id="play-btn">Empezar</button>
         <div id="waiting-text">Esperando a tu oponente...</div>
-        
-        <div id="rules-guide">
-            <div class="rule-item"><div class="color-dot" style="background: var(--c-magenta);"></div>1 casilla ortogonal (arriba, abajo, izq, der)</div>
-            <div class="rule-item"><div class="color-dot" style="background: var(--c-rojo);"></div>2 casillas ortogonales (salta)</div>
-            <div class="rule-item"><div class="color-dot" style="background: var(--c-azul);"></div>1 casilla diagonal</div>
-            <div class="rule-item"><div class="color-dot" style="background: var(--c-verde);"></div>2 casillas diagonales (salta)</div>
-            <div class="rule-item"><div class="color-dot" style="background: var(--c-naranja);"></div>En forma de L (como el caballo de ajedrez)</div>
-        </div>
     </div>
 
-    <h1 id="game-title" style="display: none;">Pentaktys</h1>
     <div class="ui-container" id="game-ui" style="display: none;">
+        <button class="help-btn" id="help-btn">Cómo jugar</button>
         <div class="indicator">
             <span class="indicator-label">Turno</span>
             <span class="indicator-value" id="turnIndicator">
@@ -104,12 +94,26 @@
     </div>
     <div class="controls" id="game-controls" style="display: none;">
         <button id="restart-btn">Reiniciar Partida</button>
+        <button id="exit-btn">Salir</button>
     </div>
 
-    <div id="result-screen">
-        <div id="result-content">
-            <div id="result-title">Fin de la Partida</div>
-            <div id="winner-name">Ganador: -</div>
+    <div class="modal-overlay" id="rules-modal">
+        <div class="modal-content">
+            <h2>Cómo Jugar</h2>
+            <div class="modal-intro">Mueve tus fichas para derrotar a tu rival. Después de los movimientos iniciales, el tablero va desapareciendo.</div>
+            <div class="rule-item"><div class="color-dot" style="background: var(--c-magenta);"></div>Morado: 1 casilla ortogonal (arriba, abajo, izq, der)</div>
+            <div class="rule-item"><div class="color-dot" style="background: var(--c-rojo);"></div>Rojo: 2 casillas ortogonales (salta)</div>
+            <div class="rule-item"><div class="color-dot" style="background: var(--c-azul);"></div>Azul: 1 casilla diagonal</div>
+            <div class="rule-item"><div class="color-dot" style="background: var(--c-verde);"></div>Verde: 2 casillas diagonales (salta)</div>
+            <div class="rule-item"><div class="color-dot" style="background: var(--c-naranja);"></div>Naranja: En forma de L (como el caballo de ajedrez)</div>
+            <button id="close-rules-btn">Entendido</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="result-modal">
+        <div class="modal-content">
+            <h2>Fin de la Partida</h2>
+            <div id="winner-name" style="font-size: 1.5rem; font-weight: bold; color: #fbbf24;">Ganador: -</div>
             <button id="accept-btn">Aceptar</button>
         </div>
     </div>
@@ -126,7 +130,6 @@
         const turnIndicator = document.getElementById('turnIndicator');
         const roundIndicator = document.getElementById('roundIndicator');
         
-        // Mapeo de nombres de colores a variables CSS
         const colorMap = {
             'morado': 'var(--c-magenta)',
             'rojo': 'var(--c-rojo)',
@@ -156,19 +159,22 @@
             player2Name = gameData.player2Name;
 
             document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('game-title').style.display = 'block';
             document.getElementById('game-ui').style.display = 'flex';
             document.getElementById('game-board-container').style.display = 'block';
-            document.getElementById('game-controls').style.display = 'block';
+            document.getElementById('game-controls').style.display = 'flex';
 
-            initGame(gameData.board); // El servidor envía el tablero ya calculado
+            initGame(gameData.board);
         });
 
-        socket.on('game_restart', (data) => {
+        socket.on('game_restart', (payload) => {
+            // Actualizar nombres por si acaso, y generar tablero
+            player1Name = payload.player1Name;
+            player2Name = payload.player2Name;
+            
             isSyncing = true;
-            initGame(data.board); // Recibir nuevo tablero del servidor
+            initGame(payload.board);
             isSyncing = false;
-            document.getElementById('result-screen').style.display = 'none'; 
+            document.getElementById('result-modal').style.display = 'none'; 
         });
 
         socket.on('opponent_move', (moveData) => {
@@ -191,12 +197,29 @@
 
         document.getElementById('restart-btn').addEventListener('click', () => {
             if (confirm('¿Reiniciar la partida? Esto afectará a ambos jugadores.')) {
-                socket.emit('restart_game', roomId);
+                // Enviamos los nombres junto con la petición de reinicio para asegurar que lleguen bien
+                socket.emit('restart_game', { 
+                    roomId: roomId, 
+                    player1Name: player1Name, 
+                    player2Name: player2Name 
+                });
             }
         });
 
+        document.getElementById('exit-btn').addEventListener('click', () => {
+            location.reload(); // La forma más limpia de salir a la login screen y resetear todo
+        });
+
+        document.getElementById('help-btn').addEventListener('click', () => {
+            document.getElementById('rules-modal').style.display = 'flex';
+        });
+
+        document.getElementById('close-rules-btn').addEventListener('click', () => {
+            document.getElementById('rules-modal').style.display = 'none';
+        });
+
         document.getElementById('accept-btn').addEventListener('click', () => {
-            document.getElementById('result-screen').style.display = 'none';
+            document.getElementById('result-modal').style.display = 'none';
         });
 
         function getMarksSVG(colorName) {
@@ -222,9 +245,9 @@
                     cell.className = 'cell';
                     cell.dataset.row = r; cell.dataset.col = c;
                     
-                    let colorName = boardData[r][c]; // Ej: 'morado'
+                    let colorName = boardData[r][c];
                     cell.style.backgroundColor = colorMap[colorName];
-                    cell.dataset.originalColor = colorName; // Guardamos el nombre del color
+                    cell.dataset.originalColor = colorName; 
                     cell.innerHTML = getMarksSVG(colorName);
                     boardElement.appendChild(cell);
                 }
@@ -316,7 +339,7 @@
         function endGame(winnerRole) {
             const winnerName = winnerRole === 1 ? player1Name : player2Name;
             document.getElementById('winner-name').innerText = `¡Ganador: ${winnerName}!`;
-            document.getElementById('result-screen').style.display = 'flex';
+            document.getElementById('result-modal').style.display = 'flex';
             updateLocks(); 
         }
 
