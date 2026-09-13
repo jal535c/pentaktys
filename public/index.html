@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pentaktys Online</title>
+    <link rel="icon" href="favicon.ico">
     <style>
         :root {
             --bg-color: #5b6b83; --board-bg: #0f172a; --line-color: #334155; --text-color: #f1f5f9; 
@@ -19,17 +20,19 @@
         }
         h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; }
 
-        #login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 20px; }
+        /* Pantalla de Login */
+        #login-screen { display: flex; flex-direction: column; align-items: center; gap: 30px; width: 100%; max-width: 400px; }
         #login-screen input {
             padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid var(--text-color); 
-            background-color: transparent; color: var(--text-color); text-align: center; outline: none;
+            background-color: transparent; color: var(--text-color); text-align: center; outline: none; width: 100%;
         }
         #login-screen button {
             padding: 15px 30px; font-size: 1.2rem; cursor: pointer; border: none; border-radius: 8px;
-            background-color: var(--text-color); color: var(--bg-color); font-weight: bold;
+            background-color: var(--text-color); color: var(--bg-color); font-weight: bold; width: 100%;
         }
-        #waiting-text { color: #cbd5e1; font-size: 1.2rem; display: none; }
+        #waiting-text { color: #cbd5e1; font-size: 1.2rem; display: none; text-align: center; }
 
+        /* UI Juego */
         .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); }
         .indicator { display: flex; flex-direction: column; align-items: center; }
         .indicator-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #cbd5e1; margin-bottom: 4px; }
@@ -56,10 +59,23 @@
         button { padding: 10px 20px; font-size: 1rem; background-color: transparent; color: var(--text-color); border: 1px solid var(--text-color); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; }
         button:hover { background-color: var(--text-color); color: var(--bg-color); }
         .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.8; transform: scale(1.1); transition: none; box-shadow: 0 8px 16px rgba(0,0,0,0.5); width: 65px; height: 65px; border-radius: 50%; }
+
+        /* Modal de Fin de Partida */
+        #result-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.8);
+            display: none; align-items: center; justify-content: center; z-index: 10000;
+        }
+        #result-content {
+            background-color: var(--board-bg); padding: 40px; border-radius: 12px; border: 1px solid var(--text-color);
+            text-align: center; display: flex; flex-direction: column; gap: 20px;
+        }
+        #result-title { font-size: 1.5rem; text-transform: uppercase; letter-spacing: 1px; }
+        #winner-name { font-size: 2rem; font-weight: bold; color: #fbbf24; }
     </style>
 </head>
 <body>
 
+    <!-- Pantalla de Login -->
     <div id="login-screen">
         <h1>Pentaktys Online</h1>
         <input type="text" id="name-input" placeholder="Tu nombre" maxlength="12">
@@ -67,6 +83,7 @@
         <div id="waiting-text">Esperando a tu oponente...</div>
     </div>
 
+    <!-- UI del Juego (Oculta inicialmente) -->
     <h1 id="game-title" style="display: none;">Pentaktys</h1>
     <div class="ui-container" id="game-ui" style="display: none;">
         <div class="indicator">
@@ -87,12 +104,21 @@
         <button id="restart-btn">Reiniciar Partida</button>
     </div>
 
+    <!-- Pantalla de Resultados (Modal) -->
+    <div id="result-screen">
+        <div id="result-content">
+            <div id="result-title">Fin de la Partida</div>
+            <div id="winner-name">Ganador: -</div>
+            <button id="rematch-btn">Nueva Partida</button>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let myRole = 0;
-        let player1Name = "";
-        let player2Name = "";
+        let myRole = 0; 
+        let player1Name = "Jugador 1";
+        let player2Name = "Jugador 2";
         let roomId = null;
 
         const boardElement = document.getElementById('board');
@@ -136,10 +162,8 @@
             initGame(gameData.boardSeed);
         });
 
-        // Recibir reinicio del rival
         socket.on('game_restart', () => {
             isSyncing = true;
-            // Generar tablero local limpio
             initGame(Math.random()); 
             isSyncing = false;
         });
@@ -162,13 +186,21 @@
             isSyncing = false;
         });
 
-        // Reiniciar partida y avisar al rival
         document.getElementById('restart-btn').addEventListener('click', () => {
             if (confirm('¿Reiniciar la partida? Esto afectará a ambos jugadores.')) {
-                socket.emit('restart_game', roomId);
-                initGame(Math.random()); // Reiniciar mi tablero localmente
+                triggerRestart();
             }
         });
+
+        document.getElementById('rematch-btn').addEventListener('click', () => {
+            triggerRestart();
+        });
+
+        function triggerRestart() {
+            socket.emit('restart_game', roomId);
+            initGame(Math.random()); 
+            document.getElementById('result-screen').style.display = 'none';
+        }
 
         function getMarksSVG(color) {
             let lines = '';
@@ -203,7 +235,6 @@
 
             const uniqueColors = ['var(--c-magenta)', 'var(--c-rojo)', 'var(--c-verde)', 'var(--c-azul)', 'var(--c-naranja)'];
             
-            // Usar la semilla para que ambos jugadores tengan el mismo tablero
             let firstRowColors = shuffleArrayWithSeed(uniqueColors, seed);
             let fifthRowColors = [...firstRowColors].reverse();
             let availableColors = [...colors];
@@ -249,7 +280,6 @@
         }
 
         function updateUI() {
-            // Arreglado: usar las variables globales correctas
             if (currentTurn === 1) {
                 turnIndicator.innerHTML = `<span class="turn-dot j1"></span>${player1Name}`;
             } else {
@@ -273,6 +303,58 @@
             currentTurn = currentTurn === 1 ? 2 : 1;
             updateUI();
             updateLocks();
+            checkGameEnd(); // Comprobar fin de partida tras cada turno
+        }
+
+        // --- LÓGICA DE FIN DE PARTIDA ---
+        function checkGameEnd() {
+            let p1Pieces = document.querySelectorAll('.piece-wrapper[data-player="1"]').length;
+            let p2Pieces = document.querySelectorAll('.piece-wrapper[data-player="2"]').length;
+
+            if (p1Pieces === 0) {
+                endGame(2);
+            } else if (p2Pieces === 0) {
+                endGame(1);
+            } else {
+                // Si al jugador actual no le quedan movimientos válidos, pierde
+                if (!hasValidMoves(currentTurn)) {
+                    endGame(currentTurn === 1 ? 2 : 1);
+                }
+            }
+        }
+
+        function hasValidMoves(player) {
+            // Obtiene todas las fichas del jugador
+            let pieces = document.querySelectorAll(`.piece-wrapper[data-player="${player}"]`);
+            for (let piece of pieces) {
+                let cell = piece.parentNode;
+                let r1 = parseInt(cell.dataset.row);
+                let c1 = parseInt(cell.dataset.col);
+                let color = cell.dataset.originalColor;
+
+                // Revisa si existe al menos un destino válido en el tablero
+                let allCells = document.querySelectorAll('.cell');
+                for (let targetCell of allCells) {
+                    if (targetCell === cell || targetCell.classList.contains('empty')) continue;
+                    let r2 = parseInt(targetCell.dataset.row);
+                    let c2 = parseInt(targetCell.dataset.col);
+                    
+                    if (isValidMove(color, r1, c1, r2, c2)) {
+                        let targetPiece = targetCell.querySelector('.piece-wrapper');
+                        if (!targetPiece || parseInt(targetPiece.dataset.player) !== player) {
+                            return true; // Encontró un movimiento, no ha perdido
+                        }
+                    }
+                }
+            }
+            return false; // No hay movimientos posibles
+        }
+
+        function endGame(winnerRole) {
+            const winnerName = winnerRole === 1 ? player1Name : player2Name;
+            document.getElementById('winner-name').innerText = `¡Ganador: ${winnerName}!`;
+            document.getElementById('result-screen').style.display = 'flex';
+            updateLocks(); // Bloquea todas las fichas
         }
 
         function handlePointerDown(e) {
@@ -356,7 +438,7 @@
                         const targetRow = parseInt(targetCell.dataset.row);
                         const targetCol = parseInt(targetCell.dataset.col);
                         if (isValidMove(originBgColor || originCell.dataset.originalColor, originRow, originCol, targetRow, targetCol)) {
-                            if (targetPieceWrapper) targetCell.removeChild(targetPieceWrapper); // Comer
+                            if (targetPieceWrapper) targetCell.removeChild(targetPieceWrapper); 
                             targetCell.appendChild(draggedPieceWrapper);
                             moveSuccessful = true;
                         }
