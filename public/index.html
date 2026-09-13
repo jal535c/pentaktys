@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pentaktys Online</title>
+    <link rel="icon" href="favicon.ico">
     <style>
         :root {
             --bg-color: #5b6b83; --board-bg: #0f172a; --line-color: #334155; --text-color: #f1f5f9; 
@@ -14,12 +15,12 @@
         body {
             font-family: system-ui, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color);
             min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center;
-            justify-content: flex-start; gap: 30px; padding: 30px 20px; touch-action: none; overflow: hidden;
+            justify-content: flex-start; gap: 30px; padding: 30px 20px; touch-action: none; overflow-y: auto; overflow-x: hidden;
             -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
         }
-        h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+        h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; text-align: center; margin: 0; }
 
-        #login-screen { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; max-width: 400px; }
+        #login-screen { display: flex; flex-direction: column; align-items: center; gap: 30px; width: 100%; max-width: 400px; }
         #login-screen input {
             padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid var(--text-color); 
             background-color: transparent; color: var(--text-color); text-align: center; outline: none; width: 100%;
@@ -29,15 +30,15 @@
             background-color: var(--text-color); color: var(--bg-color); font-weight: bold; width: 100%;
         }
         #waiting-text { color: #cbd5e1; font-size: 1.2rem; display: none; text-align: center; }
+        .btn-outline { background: transparent !important; color: var(--text-color) !important; border: 1px solid var(--text-color) !important; }
         
-        .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); position: relative; }
+        .ui-container { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 500px; background-color: rgba(15, 23, 42, 0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(241, 245, 249, 0.1); }
         .indicator { display: flex; flex-direction: column; align-items: center; }
         .indicator-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #cbd5e1; margin-bottom: 4px; }
         .indicator-value { font-size: 1.2rem; font-weight: bold; display: flex; align-items: center; gap: 8px; }
         .turn-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); }
         .turn-dot.j1 { background-color: var(--ficha-j1); }
         .turn-dot.j2 { background-color: var(--ficha-j2); }
-        .help-btn { position: absolute; right: 10px; top: 10px; border: 1px solid rgba(255,255,255,0.3); background: transparent; color: var(--text-color); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8rem; }
 
         .board-container { width: 100%; max-width: 500px; aspect-ratio: 1 / 1; }
         .board { display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(5, 1fr); gap: 4px; width: 100%; height: 100%; background-color: var(--line-color); border: 4px solid var(--line-color); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5); }
@@ -54,7 +55,7 @@
         .piece.j1 { background-color: var(--ficha-j1); border-color: #cbd5e1; }
         .piece.j2 { background-color: var(--ficha-j2); border-color: #334155; }
         
-        .controls { margin-top: 0; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 200px; }
+        .controls { margin-top: 0; display: flex; flex-direction: column; gap: 30px; width: 100%; max-width: 200px; }
         button { padding: 10px 20px; font-size: 1rem; background-color: transparent; color: var(--text-color); border: 1px solid var(--text-color); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; }
         button:hover { background-color: var(--text-color); color: var(--bg-color); }
         .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.8; transform: scale(1.1); transition: none; box-shadow: 0 8px 16px rgba(0,0,0,0.5); width: 65px; height: 65px; border-radius: 50%; }
@@ -73,11 +74,12 @@
         <h1>Pentaktys Online</h1>
         <input type="text" id="name-input" placeholder="Tu nombre" maxlength="12">
         <button id="play-btn">Empezar</button>
+        <button id="help-btn" class="btn-outline">Cómo jugar</button>
         <div id="waiting-text">Esperando a tu oponente...</div>
     </div>
 
+    <h1 id="game-title" style="display: none;">Pentaktys</h1>
     <div class="ui-container" id="game-ui" style="display: none;">
-        <button class="help-btn" id="help-btn">Cómo jugar</button>
         <div class="indicator">
             <span class="indicator-label">Turno</span>
             <span class="indicator-value" id="turnIndicator">
@@ -125,6 +127,7 @@
         let player1Name = "Jugador 1";
         let player2Name = "Jugador 2";
         let roomId = null;
+        let myName = ""; // Guardamos nuestro nombre
 
         const boardElement = document.getElementById('board');
         const turnIndicator = document.getElementById('turnIndicator');
@@ -146,10 +149,12 @@
             const input = document.getElementById('name-input');
             if (input.value.trim() === "") { alert("Por favor, escribe tu nombre"); return; }
             
+            myName = input.value.trim();
             document.getElementById('play-btn').style.display = 'none';
+            document.getElementById('help-btn').style.display = 'none';
             input.style.display = 'none';
             document.getElementById('waiting-text').style.display = 'block';
-            socket.emit('player_ready', input.value.trim());
+            socket.emit('player_ready', myName);
         });
 
         socket.on('game_start', (gameData, role) => {
@@ -159,6 +164,7 @@
             player2Name = gameData.player2Name;
 
             document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-title').style.display = 'block';
             document.getElementById('game-ui').style.display = 'flex';
             document.getElementById('game-board-container').style.display = 'block';
             document.getElementById('game-controls').style.display = 'flex';
@@ -167,7 +173,6 @@
         });
 
         socket.on('game_restart', (payload) => {
-            // Actualizar nombres por si acaso, y generar tablero
             player1Name = payload.player1Name;
             player2Name = payload.player2Name;
             
@@ -175,6 +180,12 @@
             initGame(payload.board);
             isSyncing = false;
             document.getElementById('result-modal').style.display = 'none'; 
+        });
+
+        // Si el rival se desconecta, volvemos a la pantalla de inicio
+        socket.on('opponent_left', () => {
+            alert("Tu oponente ha abandonado la partida.");
+            location.reload();
         });
 
         socket.on('opponent_move', (moveData) => {
@@ -197,7 +208,7 @@
 
         document.getElementById('restart-btn').addEventListener('click', () => {
             if (confirm('¿Reiniciar la partida? Esto afectará a ambos jugadores.')) {
-                // Enviamos los nombres junto con la petición de reinicio para asegurar que lleguen bien
+                // Corregido: Enviamos nuestros datos y el roomId para que el servidor sepa quiénes somos
                 socket.emit('restart_game', { 
                     roomId: roomId, 
                     player1Name: player1Name, 
@@ -207,7 +218,7 @@
         });
 
         document.getElementById('exit-btn').addEventListener('click', () => {
-            location.reload(); // La forma más limpia de salir a la login screen y resetear todo
+            location.reload(); 
         });
 
         document.getElementById('help-btn').addEventListener('click', () => {
