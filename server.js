@@ -71,20 +71,25 @@ io.on('connection', (socket) => {
     });
 
     socket.on('restart_game', (data) => {
-        // Generar nuevo tablero y enviar datos completos a ambos jugadores
         const newBoard = generateBoard();
         const payload = {
             board: newBoard,
             player1Name: data.player1Name,
             player2Name: data.player2Name
         };
-        // Emitir a TODOS en la sala (ambos clientes)
         io.to(data.roomId).emit('game_restart', payload);
     });
 
+    // Nueva lógica: si un jugador se desconecta, el otro vuelve al login
     socket.on('disconnect', () => {
         if (waitingPlayer && waitingPlayer.id === socket.id) {
             waitingPlayer = null;
+        } else {
+            // Si estaba en una partida, avisar a su rival
+            const rooms = Object.keys(socket.rooms).filter(r => r !== socket.id);
+            rooms.forEach(roomId => {
+                socket.to(roomId).emit('opponent_left');
+            });
         }
     });
 });
