@@ -15,19 +15,15 @@ let waitingPlayer = null;
 function generateBoard() {
     const uniqueColors = ['morado', 'rojo', 'verde', 'azul', 'naranja'];
     
-    // Barajar únicos para fila 1
     let firstRow = [...uniqueColors].sort(() => Math.random() - 0.5);
     let fifthRow = [...firstRow].reverse();
     
-    // Bolsa de colores (8 de cada uno = 40)
     let bag = [];
     uniqueColors.forEach(c => { for(let i=0; i<8; i++) bag.push(c); });
     
-    // Quitar 5 por fila 1 y 5 por fila 5
     firstRow.forEach(c => { let i = bag.indexOf(c); if(i !== -1) bag.splice(i, 1); });
     fifthRow.forEach(c => { let i = bag.indexOf(c); if(i !== -1) bag.splice(i, 1); });
     
-    // Barajar los 30 restantes
     bag.sort(() => Math.random() - 0.5);
     
     let board = [firstRow];
@@ -57,7 +53,7 @@ io.on('connection', (socket) => {
                 roomId: roomId,
                 player1Name: player1.playerName,
                 player2Name: player2.playerName,
-                board: generateBoard() // El servidor crea el tablero
+                board: generateBoard()
             };
 
             io.to(player1.id).emit('game_start', gameData, 1);
@@ -74,10 +70,16 @@ io.on('connection', (socket) => {
         socket.to(moveData.roomId).emit('opponent_move', moveData);
     });
 
-    socket.on('restart_game', (roomId) => {
-        // Al reiniciar, el servidor genera un tablero nuevo y se lo manda a ambos
+    socket.on('restart_game', (data) => {
+        // Generar nuevo tablero y enviar datos completos a ambos jugadores
         const newBoard = generateBoard();
-        io.to(roomId).emit('game_restart', { board: newBoard });
+        const payload = {
+            board: newBoard,
+            player1Name: data.player1Name,
+            player2Name: data.player2Name
+        };
+        // Emitir a TODOS en la sala (ambos clientes)
+        io.to(data.roomId).emit('game_restart', payload);
     });
 
     socket.on('disconnect', () => {
