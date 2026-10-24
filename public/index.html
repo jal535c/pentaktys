@@ -247,7 +247,7 @@
 
         document.getElementById('restart-btn').addEventListener('click', () => {
             if (!roomId) return;
-            if (confirm('Â¿Reiniciar la partida? Esto afectarÃ¡ a ambos jugadores.')) {
+            if (confirm('¿Reiniciar la partida? Esto afectará a ambos jugadores.')) {
                 // El servidor genera un unico tablero y lo envia a los dos
                 socket.emit('restart_game');
             }
