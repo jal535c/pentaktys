@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pentaktys Online</title>
+    <title>Pentaktys</title>
     <link rel="icon" href="favicon.ico">
     <style>
-        :root {
-            --bg-color: #5b6b83; --board-bg: #0f172a; --line-color: #334155; --text-color: #f1f5f9; 
+        :root { 
+            --bg-color: #34445d; --board-bg: #0f172a; --line-color: #334155; --text-color: #f1f5f9; 
             --c-magenta: #9D4EDD; --c-rojo: #E63946; --c-verde: #2A9D8F; --c-azul: #4361EE; --c-naranja: #F4A261; 
             --ficha-j1: #f8fafc; --ficha-j2: #0f172a; 
         }
@@ -71,7 +71,7 @@
 <body>
 
     <div id="login-screen">
-        <h1>Pentaktys Online</h1>
+        <h1>Pentaktys</h1>
         <input type="text" id="name-input" placeholder="Tu nombre" maxlength="12">
         <button id="play-btn">Empezar</button>
         <button id="help-btn" class="btn-outline">Cómo jugar</button>
@@ -123,11 +123,37 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let myRole = 0; 
+
+        const SESSION_KEY = 'pentaktys_session';
+        const MAX_MOVES = 15;
+
+        function readSession() {
+            try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || '{}') || {}; } catch (e) { return {}; }
+        }
+        function saveSession() {
+            try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (e) {}
+        }
+        function clearSession() {
+            try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+            session = {};
+        }
+        function newToken() {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                return window.crypto.randomUUID().replace(/-/g, '');
+            }
+            let token = '';
+            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            for (let i = 0; i < 24; i++) token += chars[Math.floor(Math.random() * chars.length)];
+            return token;
+        }
+
+        let session = readSession(); // { token, roomId, name } -> sobrevive a recargas
+        let myRole = 0;
         let player1Name = "Jugador 1";
         let player2Name = "Jugador 2";
         let roomId = null;
-        let myName = ""; // Guardamos nuestro nombre
+        let myName = session.name || "";
+        let isWaiting = false;
 
         const boardElement = document.getElementById('board');
         const turnIndicator = document.getElementById('turnIndicator');
@@ -142,83 +168,97 @@
         };
         
         let draggedPieceWrapper = null, ghostElement = null, originCell = null, originBgColor = null, originRow = -1, originCol = -1;
-        let currentTurn = 1, movesLeft = 15;
-        let isSyncing = false;
+        let currentTurn = 1, movesLeft = MAX_MOVES;
+        let gameStatus = 'playing';
+        let winnerRole = 0;
+        let lastSeq = 0;
 
         document.getElementById('play-btn').addEventListener('click', () => {
             const input = document.getElementById('name-input');
-            if (input.value.trim() === "") { alert("Por favor, escribe tu nombre"); return; }
-            
-            myName = input.value.trim();
+            const name = input.value.trim();
+            if (name === "") { alert("Por favor, escribe tu nombre"); return; }
+
+            if (!session.token) session.token = newToken();
+            myName = name;
+            session.name = name;
+            saveSession();
+
             document.getElementById('play-btn').style.display = 'none';
             document.getElementById('help-btn').style.display = 'none';
             input.style.display = 'none';
             document.getElementById('waiting-text').style.display = 'block';
-            socket.emit('player_ready', myName);
+            isWaiting = true;
+            socket.emit('player_ready', { name: myName, token: session.token });
         });
 
-        socket.on('game_start', (gameData, role) => {
-            myRole = role;
-            roomId = gameData.roomId;
-            player1Name = gameData.player1Name; 
-            player2Name = gameData.player2Name;
-
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('game-title').style.display = 'block';
-            document.getElementById('game-ui').style.display = 'flex';
-            document.getElementById('game-board-container').style.display = 'block';
-            document.getElementById('game-controls').style.display = 'flex';
-
-            initGame(gameData.board);
+        socket.on('game_start', (state) => {
+            isWaiting = false;
+            lastSeq = 0;
+            applyState(state);
+            showGameScreen();
         });
 
-        socket.on('game_restart', (payload) => {
-            player1Name = payload.player1Name;
-            player2Name = payload.player2Name;
-            
-            isSyncing = true;
-            initGame(payload.board);
-            isSyncing = false;
-            document.getElementById('result-modal').style.display = 'none'; 
+        // El servidor manda el estado completo (movimiento del rival, reinicio o reconexion)
+        socket.on('game_state', (state) => {
+            applyState(state);
+            showGameScreen();
         });
 
-        // Si el rival se desconecta, volvemos a la pantalla de inicio
+        socket.on('game_restart', (state) => {
+            document.getElementById('result-modal').style.display = 'none';
+            applyState(state);
+            showGameScreen();
+        });
+
+        // El servidor decide cuando termina la partida y quien gana
+        socket.on('game_over', (payload) => {
+            const winner = payload && (payload.winnerRole === 1 || payload.winnerRole === 2) ? payload.winnerRole : 0;
+            if (winner) endGame(winner);
+        });
+
+        // El servidor rechazó un movimiento: repintamos su estado (deshace el movimiento local)
+        socket.on('move_rejected', (payload) => {
+            if (payload && payload.state) applyState(payload.state);
+            if (payload && payload.reason) console.warn('Movimiento rechazado:', payload.reason);
+        });
+
+        socket.on('rejoin_failed', () => {
+            const estabaJugando = myRole !== 0;
+            showLogin();
+            if (estabaJugando) alert("La partida ya no estÃ¡ disponible.");
+        });
+
+        // Si el rival no vuelve dentro del margen del servidor, volvemos a la pantalla de inicio
         socket.on('opponent_left', () => {
-            alert("Tu oponente ha abandonado la partida.");
-            location.reload();
+            const estabaJugando = myRole !== 0;
+            showLogin();
+            if (estabaJugando) alert("Tu oponente ha abandonado la partida.");
         });
 
-        socket.on('opponent_move', (moveData) => {
-            isSyncing = true;
-            const fromCell = document.querySelector(`.cell[data-row="${moveData.fromRow}"][data-col="${moveData.fromCol}"]`);
-            const toCell = document.querySelector(`.cell[data-row="${moveData.toRow}"][data-col="${moveData.toCol}"]`);
-            const pieceWrapper = fromCell.querySelector('.piece-wrapper');
-
-            if (moveData.wasEmptyConsumed) {
-                fromCell.classList.add('empty');
-                fromCell.style.backgroundColor = '';
+        // Al (re)conectar: retomamos la partida o volvemos a la cola de espera
+        socket.on('connect', () => {
+            if (!session.token) return;
+            if (session.roomId) {
+                socket.emit('rejoin', { token: session.token, roomId: session.roomId });
+            } else if (isWaiting) {
+                socket.emit('player_ready', { name: myName, token: session.token });
             }
-            const targetPiece = toCell.querySelector('.piece-wrapper');
-            if (targetPiece) toCell.removeChild(targetPiece);
-
-            toCell.appendChild(pieceWrapper);
-            changeTurn();
-            isSyncing = false;
         });
 
         document.getElementById('restart-btn').addEventListener('click', () => {
-            if (confirm('¿Reiniciar la partida? Esto afectará a ambos jugadores.')) {
-                // Corregido: Enviamos nuestros datos y el roomId para que el servidor sepa quiénes somos
-                socket.emit('restart_game', { 
-                    roomId: roomId, 
-                    player1Name: player1Name, 
-                    player2Name: player2Name 
-                });
+            if (!roomId) return;
+            if (confirm('Â¿Reiniciar la partida? Esto afectarÃ¡ a ambos jugadores.')) {
+                // El servidor genera un unico tablero y lo envia a los dos
+                socket.emit('restart_game');
             }
         });
 
         document.getElementById('exit-btn').addEventListener('click', () => {
-            location.reload(); 
+            let recargado = false;
+            const recargar = () => { if (recargado) return; recargado = true; location.reload(); };
+            clearSession();
+            socket.emit('leave_game', recargar);
+            setTimeout(recargar, 500);
         });
 
         document.getElementById('help-btn').addEventListener('click', () => {
@@ -244,28 +284,129 @@
             return svg;
         }
 
-        function initGame(boardData) {
-            boardElement.innerHTML = '';
+        function showGameScreen() {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-title').style.display = 'block';
+            document.getElementById('game-ui').style.display = 'flex';
+            document.getElementById('game-board-container').style.display = 'block';
+            document.getElementById('game-controls').style.display = 'flex';
+        }
+
+        function showLogin() {
+            myRole = 0;
+            roomId = null;
+            isWaiting = false;
             currentTurn = 1;
-            movesLeft = 15;
+            movesLeft = MAX_MOVES;
+            gameStatus = 'playing';
+            winnerRole = 0;
+            lastSeq = 0;
+            session.roomId = null;
+            saveSession();
+
+            resetDragState();
+            boardElement.innerHTML = '';
+
+            document.getElementById('login-screen').style.display = 'flex';
+            document.getElementById('game-title').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'none';
+            document.getElementById('game-board-container').style.display = 'none';
+            document.getElementById('game-controls').style.display = 'none';
+            document.getElementById('result-modal').style.display = 'none';
+            document.getElementById('rules-modal').style.display = 'none';
+            document.getElementById('play-btn').style.display = '';
+            document.getElementById('help-btn').style.display = '';
+            document.getElementById('waiting-text').style.display = 'none';
+
+            const input = document.getElementById('name-input');
+            input.style.display = '';
+            input.value = session.name || '';
+        }
+
+        // Aplica el estado autoritativo que llega del servidor
+        function applyState(state) {
+            if (!state || !Array.isArray(state.board)) return;
+            // Ignoramos estados viejos (p. ej. que lleguen tarde tras reconectar)
+            if (Number.isInteger(state.seq)) {
+                if (state.seq < lastSeq) return;
+                lastSeq = state.seq;
+            }
+
+            if (state.role === 1 || state.role === 2) myRole = state.role;
+            if (typeof state.roomId === 'string') roomId = state.roomId;
+            if (typeof state.player1Name === 'string' && state.player1Name !== '') player1Name = state.player1Name;
+            if (typeof state.player2Name === 'string' && state.player2Name !== '') player2Name = state.player2Name;
+
+            currentTurn = state.currentTurn === 2 ? 2 : 1;
+            movesLeft = Number.isInteger(state.movesLeft) ? state.movesLeft : MAX_MOVES;
+            gameStatus = state.status === 'finished' ? 'finished' : 'playing';
+            winnerRole = state.winner === 1 || state.winner === 2 ? state.winner : 0;
+
+            if (!session.token) session.token = newToken();
+            session.roomId = roomId;
+            session.name = myRole === 2 ? player2Name : player1Name;
+            saveSession();
+
+            renderBoard(state);
             updateUI();
+            updateLocks();
+
+            // Al reconectar en una partida ya terminada, se ve el resultado
+            if (gameStatus === 'finished' && winnerRole) endGame(winnerRole);
+        }
+
+        function renderBoard(state) {
+            resetDragState();
+            boardElement.innerHTML = '';
+
+            const piecesByCell = new Map();
+            (state.pieces || []).forEach(p => {
+                if (!p) return;
+                piecesByCell.set(`${p.row},${p.col}`, p.player === 2 ? 2 : 1);
+            });
+
+            const emptyCells = new Set();
+            (state.empty || []).forEach(e => {
+                if (Array.isArray(e)) emptyCells.add(`${e[0]},${e[1]}`);
+            });
 
             for (let r = 0; r < 5; r++) {
                 for (let c = 0; c < 5; c++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
-                    cell.dataset.row = r; cell.dataset.col = c;
-                    
-                    let colorName = boardData[r][c];
-                    cell.style.backgroundColor = colorMap[colorName];
-                    cell.dataset.originalColor = colorName; 
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+                    const colorName = state.board[r] ? state.board[r][c] : null;
+                    cell.dataset.originalColor = colorName;
                     cell.innerHTML = getMarksSVG(colorName);
+
+                    if (emptyCells.has(`${r},${c}`)) {
+                        cell.classList.add('empty');
+                    } else {
+                        cell.style.backgroundColor = colorMap[colorName];
+                    }
+
+                    const player = piecesByCell.get(`${r},${c}`);
+                    if (player) createPiece(cell, player);
+
                     boardElement.appendChild(cell);
                 }
             }
-            for (let i = 0; i < 5; i++) createPiece(boardElement.children[i], 1);
-            for (let i = 20; i < 25; i++) createPiece(boardElement.children[i], 2);
-            updateLocks();
+        }
+
+        function resetDragState() {
+            if (ghostElement && ghostElement.parentNode) ghostElement.parentNode.removeChild(ghostElement);
+            ghostElement = null;
+            draggedPieceWrapper = null;
+            originCell = null;
+            originBgColor = null;
+            originRow = -1;
+            originCol = -1;
+            document.removeEventListener('pointermove', handlePointerMove);
+            document.removeEventListener('pointerup', handlePointerUp);
+            document.removeEventListener('pointercancel', handlePointerUp);
+            document.querySelectorAll('.cell.drag-over').forEach(c => c.classList.remove('drag-over'));
         }
 
         function createPiece(parentCell, player) {
@@ -281,17 +422,18 @@
         }
 
         function updateUI() {
-            if (currentTurn === 1) {
-                turnIndicator.innerHTML = `<span class="turn-dot j1"></span>${player1Name}`;
-            } else {
-                turnIndicator.innerHTML = `<span class="turn-dot j2"></span>${player2Name}`;
-            }
-            roundIndicator.innerText = Math.max(0, movesLeft);
+            turnIndicator.textContent = '';
+            const dot = document.createElement('span');
+            dot.className = `turn-dot j${currentTurn}`;
+            turnIndicator.appendChild(dot);
+            turnIndicator.appendChild(document.createTextNode(currentTurn === 1 ? player1Name : player2Name));
+            roundIndicator.textContent = String(Math.max(0, movesLeft));
         }
 
         function updateLocks() {
+            const jugando = gameStatus === 'playing';
             document.querySelectorAll('.piece-wrapper').forEach(p => {
-                if (parseInt(p.dataset.player) === currentTurn && currentTurn === myRole) {
+                if (jugando && parseInt(p.dataset.player) === currentTurn && currentTurn === myRole) {
                     p.classList.remove('locked');
                 } else {
                     p.classList.add('locked');
@@ -300,58 +442,18 @@
         }
 
         function changeTurn() {
+            // Avance optimista: el servidor confirma o corrige con el estado que envia
             if (movesLeft > 0) movesLeft--;
             currentTurn = currentTurn === 1 ? 2 : 1;
             updateUI();
             updateLocks();
-            checkGameEnd();
         }
 
-        function checkGameEnd() {
-            let p1Pieces = document.querySelectorAll('.piece-wrapper[data-player="1"]').length;
-            let p2Pieces = document.querySelectorAll('.piece-wrapper[data-player="2"]').length;
-
-            if (p1Pieces === 0) {
-                endGame(2);
-            } else if (p2Pieces === 0) {
-                endGame(1);
-            } else {
-                if (!hasValidMoves(currentTurn)) {
-                    endGame(currentTurn === 1 ? 2 : 1);
-                }
-            }
-        }
-
-        function hasValidMoves(player) {
-            let pieces = document.querySelectorAll(`.piece-wrapper[data-player="${player}"]`);
-            for (let piece of pieces) {
-                let cell = piece.parentNode;
-                let r1 = parseInt(cell.dataset.row);
-                let c1 = parseInt(cell.dataset.col);
-                let colorName = cell.dataset.originalColor;
-
-                let allCells = document.querySelectorAll('.cell');
-                for (let targetCell of allCells) {
-                    if (targetCell === cell || targetCell.classList.contains('empty')) continue;
-                    let r2 = parseInt(targetCell.dataset.row);
-                    let c2 = parseInt(targetCell.dataset.col);
-                    
-                    if (isValidMove(colorName, r1, c1, r2, c2)) {
-                        let targetPiece = targetCell.querySelector('.piece-wrapper');
-                        if (!targetPiece || parseInt(targetPiece.dataset.player) !== player) {
-                            return true; 
-                        }
-                    }
-                }
-            }
-            return false; 
-        }
-
-        function endGame(winnerRole) {
-            const winnerName = winnerRole === 1 ? player1Name : player2Name;
-            document.getElementById('winner-name').innerText = `¡Ganador: ${winnerName}!`;
+        function endGame(winner) {
+            const winnerName = winner === 1 ? player1Name : player2Name;
+            document.getElementById('winner-name').innerText = `Ganador: ${winnerName}!`;
             document.getElementById('result-modal').style.display = 'flex';
-            updateLocks(); 
+            updateLocks();
         }
 
         function handlePointerDown(e) {
@@ -404,7 +506,11 @@
                 if (cellBelow && !cellBelow.classList.contains('empty') && cellBelow !== originCell) {
                     const targetPiece = cellBelow.querySelector('.piece-wrapper');
                     if (!targetPiece || parseInt(targetPiece.dataset.player) !== currentTurn) {
-                        cellBelow.classList.add('drag-over');
+                        const r = parseInt(cellBelow.dataset.row);
+                        const c = parseInt(cellBelow.dataset.col);
+                        if (isValidMove(originCell.dataset.originalColor, originRow, originCol, r, c)) {
+                            cellBelow.classList.add('drag-over');
+                        }
                     }
                 }
             }
@@ -425,19 +531,23 @@
             ghostElement.style.display = 'none';
             const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
             let moveSuccessful = false;
-            let targetCell = null;
+            let targetRow = -1;
+            let targetCol = -1;
 
-            if (elementBelow) {
-                targetCell = elementBelow.closest('.cell');
-                if (targetCell && !targetCell.classList.contains('empty') && targetCell !== originCell) {
-                    const targetPieceWrapper = targetCell.querySelector('.piece-wrapper');
+            if (elementBelow && gameStatus === 'playing') {
+                const cellBelow = elementBelow.closest('.cell');
+                if (cellBelow && !cellBelow.classList.contains('empty') && cellBelow !== originCell) {
+                    const targetPieceWrapper = cellBelow.querySelector('.piece-wrapper');
                     if (!targetPieceWrapper || parseInt(targetPieceWrapper.dataset.player) !== currentTurn) {
-                        const targetRow = parseInt(targetCell.dataset.row);
-                        const targetCol = parseInt(targetCell.dataset.col);
-                        if (isValidMove(originCell.dataset.originalColor, originRow, originCol, targetRow, targetCol)) {
-                            if (targetPieceWrapper) targetCell.removeChild(targetPieceWrapper); 
-                            targetCell.appendChild(draggedPieceWrapper);
+                        const r = parseInt(cellBelow.dataset.row);
+                        const c = parseInt(cellBelow.dataset.col);
+                        // Comprobación local solo para dar respuesta inmediata; el servidor decide
+                        if (isValidMove(originCell.dataset.originalColor, originRow, originCol, r, c)) {
+                            if (targetPieceWrapper) cellBelow.removeChild(targetPieceWrapper);
+                            cellBelow.appendChild(draggedPieceWrapper);
                             moveSuccessful = true;
+                            targetRow = r;
+                            targetCol = c;
                         }
                     }
                 }
@@ -448,17 +558,14 @@
             document.querySelectorAll('.cell').forEach(c => c.classList.remove('drag-over'));
 
             if (moveSuccessful) {
-                if (!isSyncing) {
-                    socket.emit('make_move', {
-                        roomId: roomId,
-                        fromRow: originRow,
-                        fromCol: originCol,
-                        toRow: parseInt(targetCell.dataset.row),
-                        toCol: parseInt(targetCell.dataset.col),
-                        wasEmptyConsumed: movesLeft === 0
-                    });
-                }
                 changeTurn();
+                // Solo mandamos la intención: el servidor valida el movimiento y reparte el estado
+                socket.emit('make_move', {
+                    fromRow: originRow,
+                    fromCol: originCol,
+                    toRow: targetRow,
+                    toCol: targetCol
+                });
             } else {
                 if (originBgColor) {
                     originCell.classList.remove('empty');
